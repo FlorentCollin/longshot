@@ -24,12 +24,12 @@ pub struct EcamBT {
 
 impl EcamBT {
     /// Returns the given [`EcamBT`] instance identified by the [`Uuid`].
-    pub async fn get(uuid: Uuid) -> Result<Self, EcamError> {
+    pub async fn get(uuid: String) -> Result<Self, EcamError> {
         let manager = Manager::new().await?;
         Self::get_ecam_from_manager(&manager, uuid).await
     }
 
-    async fn get_ecam_from_manager(manager: &Manager, uuid: Uuid) -> Result<Self, EcamError> {
+    async fn get_ecam_from_manager(manager: &Manager, uuid: String) -> Result<Self, EcamError> {
         let adapter_list = manager.adapters().await?;
         if adapter_list.is_empty() {
             return Result::Err(EcamError::NotFound);
@@ -39,12 +39,25 @@ impl EcamBT {
         for adapter in adapter_list.into_iter() {
             adapter.start_scan(ScanFilter::default()).await?;
             let tx = tx.clone();
+            let uuid = uuid.clone();
             let _ = tokio::spawn(async move {
                 trace_packet!("Looking for peripheral {}", uuid);
                 loop {
-                    if let Ok(peripheral) = adapter.peripheral(&PeripheralId::from(uuid)).await {
+                    println!("Searching for peripherals");
+                    let peripherals = adapter.peripherals().await?;
+                    let mut peripheral = None;
+                    if peripherals.is_empty() {
+                        println!("There is not peripherals...")
+                    }
+                    for periph in peripherals.iter() {
+                        println!("Found peripheral with id: {:?}", { periph.id() });
+                        if periph.id().to_string() == uuid {
+                            peripheral = Some(periph);
+                        }
+                    }
+                    if let Some(peripheral) = peripheral {
                         trace_packet!("Got peripheral");
-                        let peripheral = EcamPeripheral::connect(peripheral).await?;
+                        let peripheral = EcamPeripheral::connect(peripheral.clone()).await?;
                         trace_packet!("Connected");
                         let notifications = EcamPacketReceiver::from_stream(
                             Box::pin(peripheral.notifications().await?),
@@ -59,6 +72,8 @@ impl EcamBT {
                             })
                             .await;
                         break;
+                    } else {
+                        return Result::Err(EcamError::NotFound);
                     }
                 }
                 Result::<_, EcamError>::Ok(())
@@ -70,7 +85,7 @@ impl EcamBT {
     }
 
     /// Scans for ECAM devices.
-    async fn scan() -> Result<(String, Uuid), EcamError> {
+    async fn scan() -> Result<(String, String), EcamError> {
         let manager = Manager::new().await?;
         let adapter_list = manager.adapters().await?;
         for adapter in adapter_list.into_iter() {
@@ -118,7 +133,7 @@ impl EcamDriver for EcamBT {
         Box::pin(self.peripheral.is_alive())
     }
 
-    fn scan<'a>() -> AsyncFuture<'a, (String, Uuid)>
+    fn scan<'a>() -> AsyncFuture<'a, (String, String)>
     where
         Self: Sized,
     {
@@ -152,10 +167,16 @@ impl EcamPeripheral {
         Ok(self.peripheral.is_connected().await?)
     }
 
-    pub fn id(&self) -> Uuid {
+    #[cfg(target_os = "macos")]
+    pub fn id(&self) -> String {
         // Icky, but we don't have a PeripheralId to UUID function
-        let uuid = format!("{:?}", self.peripheral.id())[13..49].to_owned();
-        Uuid::parse_str(&uuid).expect("failed to parse UUID from debug string")
+        println!("{:?}", self.peripheral.id());
+        format!("{:?}", self.peripheral.id())[13..49].to_owned()
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn id(&self) -> String {
+        self.peripheral.id().to_string()
     }
 
     pub async fn notifications(&self) -> Result<impl Stream<Item = EcamDriverOutput>, EcamError> {

@@ -70,6 +70,7 @@ async fn ecam(cmd: &ArgMatches, allow_off_and_alarms: bool) -> Result<Ecam, Ecam
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Hello, from longshot!");
     pretty_env_logger::init();
     longshot::display::initialize_display();
 
@@ -226,8 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let ecam = get_ecam_simulator(&device_name).await?;
                 pipe_stdin(ecam).await?;
             } else {
-                let uuid = Uuid::parse_str(&device_name).expect("Failed to parse UUID");
-                let ecam = EcamBT::get(uuid).await?;
+                let ecam = EcamBT::get(device_name).await?;
                 pipe_stdin(ecam).await?;
             }
         }

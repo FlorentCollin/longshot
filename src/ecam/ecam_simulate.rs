@@ -150,7 +150,7 @@ impl EcamDriver for EcamSimulate {
         Box::pin(async { Ok(true) })
     }
 
-    fn scan<'a>() -> AsyncFuture<'a, (String, uuid::Uuid)>
+    fn scan<'a>() -> AsyncFuture<'a, (String, String)>
     where
         Self: Sized,
     {

@@ -22,7 +22,7 @@ pub use ecam_wrapper::{Ecam, EcamOutput, EcamStatus};
 pub use packet_receiver::EcamPacketReceiver;
 pub use stdin_stream::pipe_stdin;
 
-pub async fn ecam_scan() -> Result<(String, Uuid), EcamError> {
+pub async fn ecam_scan() -> Result<(String, String), EcamError> {
     EcamBT::scan().await
 }
 

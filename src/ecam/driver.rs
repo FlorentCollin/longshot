@@ -22,7 +22,7 @@ pub trait EcamDriver: Send + Sync {
     fn alive(&self) -> AsyncFuture<bool>;
 
     /// Scan for the first matching device.
-    fn scan<'a>() -> AsyncFuture<'a, (String, Uuid)>
+    fn scan<'a>() -> AsyncFuture<'a, (String, String)>
     where
         Self: Sized;
 }
