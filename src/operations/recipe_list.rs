@@ -226,6 +226,7 @@ pub async fn accumulate_recipies_for(
     ecam: Ecam,
     recipes: Option<Vec<EcamBeverageId>>,
 ) -> Result<RecipeAccumulator, EcamError> {
+    info!("Entering accumulate_recipies_for");
     // Get the tap we'll use for reading responses
     let mut tap = ecam.packet_tap().await?;
     let mut recipes = if let Some(recipes) = recipes {
@@ -420,7 +421,7 @@ pub async fn list_recipes_raw(ecam: Ecam) -> Result<(), EcamError> {
 
         // Print the recipe
         if let Some(recipe) = recipe {
-            for (i, recipe_info) in recipe.iter().enumerate() {
+            for (_i, recipe_info) in recipe.iter().enumerate() {
                 s += &hex::encode(&recipe_info.encode());
             }
         }
@@ -428,7 +429,7 @@ pub async fn list_recipes_raw(ecam: Ecam) -> Result<(), EcamError> {
 
         // Print the min/max info
         if let Some(minmax) = minmax {
-            for (i, minmax_info) in minmax.iter().enumerate() {
+            for (_i, minmax_info) in minmax.iter().enumerate() {
                 s += &hex::encode(&minmax_info.encode());
             }
         }

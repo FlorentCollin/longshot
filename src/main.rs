@@ -8,7 +8,6 @@ use longshot::ecam::{
     ecam_lookup, ecam_scan, get_ecam_simulator, pipe_stdin, Ecam, EcamBT, EcamError,
 };
 use longshot::{operations::*, protocol::*};
-use uuid::Uuid;
 
 fn enum_value_parser<T: MachineEnumerable<T> + 'static>() -> PossibleValuesParser {
     PossibleValuesParser::new(T::all().map(|x| PossibleValue::new(x.to_arg_string())))

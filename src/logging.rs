@@ -1,7 +1,7 @@
 //! Logging utilities.
 
 use std::sync::atomic::AtomicBool;
-pub(crate) static TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
+pub(crate) static TRACE_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// Enable tracing display to standard error.
 pub fn enable_tracing() {

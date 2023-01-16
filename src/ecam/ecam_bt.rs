@@ -3,7 +3,7 @@ use crate::{prelude::*, protocol::*};
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
-use btleplug::platform::{Adapter, Manager, PeripheralId};
+use btleplug::platform::{Adapter, Manager};
 use stream_cancel::{StreamExt as _, Tripwire};
 use tokio::time;
 use uuid::Uuid;
@@ -43,7 +43,6 @@ impl EcamBT {
             let _ = tokio::spawn(async move {
                 trace_packet!("Looking for peripheral {}", uuid);
                 loop {
-                    println!("Searching for peripherals");
                     let peripherals = adapter.peripherals().await?;
                     let mut peripheral = None;
                     if peripherals.is_empty() {
@@ -63,6 +62,7 @@ impl EcamBT {
                             Box::pin(peripheral.notifications().await?),
                             true,
                         );
+                        trace_packet!("Notifications variable set");
 
                         // Ignore errors here -- we just want the first peripheral that connects
                         let _ = tx
@@ -71,6 +71,7 @@ impl EcamBT {
                                 notifications,
                             })
                             .await;
+                        trace_packet!("Message send correctly :)");
                         break;
                     } else {
                         return Result::Err(EcamError::NotFound);
@@ -180,7 +181,12 @@ impl EcamPeripheral {
     }
 
     pub async fn notifications(&self) -> Result<impl Stream<Item = EcamDriverOutput>, EcamError> {
-        self.peripheral.subscribe(&self.characteristic).await?;
+        trace_packet!("TRYING TO SUBSCRIBE...");
+        self.peripheral
+            .subscribe(&self.characteristic)
+            .await
+            .expect("Could not subscribe to characteristic");
+        trace_packet!("SUBSCRIBED");
         let peripheral = self.peripheral.clone();
         let (trigger, tripwire) = Tripwire::new();
         tokio::spawn(async move {
@@ -193,6 +199,7 @@ impl EcamPeripheral {
 
         // Raw stream of bytes from device
         let notifications = self.peripheral.notifications().await?.map(|m| m.value);
+        trace_packet!("GOT NOTIFICATIONS");
         // Parse into packets and stop when device disconnected
         let n = packet_stream(notifications)
             .map(|v| EcamDriverOutput::Packet(EcamDriverPacket::from_slice(unwrap_packet(&v))))
@@ -203,6 +210,7 @@ impl EcamPeripheral {
     /// Assumes that a [`Peripheral`] is a valid ECAM, and connects to it.
     pub async fn connect(peripheral: Peripheral) -> Result<Self, EcamError> {
         peripheral.connect().await?;
+        peripheral.discover_services().await?;
         let characteristic = Characteristic {
             uuid: CHARACTERISTIC_UUID,
             service_uuid: SERVICE_UUID,

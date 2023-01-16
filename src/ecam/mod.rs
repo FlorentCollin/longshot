@@ -3,7 +3,6 @@
 use crate::prelude::*;
 
 use thiserror::Error;
-use uuid::Uuid;
 
 mod driver;
 mod ecam_bt;
