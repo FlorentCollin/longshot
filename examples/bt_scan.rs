@@ -1,9 +1,7 @@
 use std::time::Duration;
 
-use btleplug::api::{
-    Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
-};
-use btleplug::platform::{Adapter, Manager, Peripheral, PeripheralId};
+use btleplug::api::{Central, Characteristic, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::platform::{Manager, Peripheral};
 use uuid::Uuid;
 
 const SERVICE_UUID: Uuid = Uuid::from_u128(0x00035b03_58e6_07dd_021a_08123a000300);
@@ -19,9 +17,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Looking for coffeemakers...");
     for adapter in manager.adapters().await? {
         adapter.start_scan(filter.clone()).await?;
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         for peripheral in adapter.peripherals().await? {
-            eprintln!("Found peripheral");
+            eprintln!("Found peripheral: {:?}", peripheral.id());
             peripheral.connect().await?;
             peripheral.discover_services().await?;
             for service in peripheral.services() {
@@ -41,6 +39,25 @@ async fn run_with_peripheral(
     peripheral: Peripheral,
     characteristic: Characteristic,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("{:?}", characteristic);
+    let data = &[
+        0x0d, 0x14, 0x83, 0xf0, 0x07, 0x01, 0x01, 0x00, 0x41, 0x09, 0x00, 0xbe, 0x02, 0x03, 0x0c,
+        0x00, 0x1c, 0x02, 0x06, 0xdc,
+    ];
+    loop {
+        println!("Sending request");
+        let result = peripheral
+            .write(
+                &characteristic,
+                data,
+                btleplug::api::WriteType::WithoutResponse,
+            )
+            .await;
+        match result {
+            Ok(_) => break,
+            Err(error) => {
+                println!("{:?}", error);
+            }
+        }
+    }
     Ok(())
 }

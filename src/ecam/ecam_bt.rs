@@ -46,7 +46,7 @@ impl EcamBT {
                     let peripherals = adapter.peripherals().await?;
                     let mut peripheral = None;
                     if peripherals.is_empty() {
-                        println!("There is not peripherals...")
+                        println!("There is no peripherals...")
                     }
                     for periph in peripherals.iter() {
                         println!("Found peripheral with id: {:?}", { periph.id() });
@@ -54,6 +54,7 @@ impl EcamBT {
                             peripheral = Some(periph);
                         }
                     }
+                    // let peripheral = EcamBT::get_ecam_from_adapter(&adapter).await?;
                     if let Some(peripheral) = peripheral {
                         trace_packet!("Got peripheral");
                         let peripheral = EcamPeripheral::connect(peripheral.clone()).await?;
@@ -107,11 +108,12 @@ impl EcamBT {
         adapter.start_scan(filter).await?;
 
         for _ in 0..10 {
-            time::sleep(Duration::from_secs(1)).await;
+            time::sleep(Duration::from_millis(500)).await;
             let peripherals = adapter.peripherals().await?;
             for peripheral in peripherals.into_iter() {
                 trace_packet!("Found peripheral, address = {:?}", peripheral.address());
                 if let Some(peripheral) = EcamPeripheral::validate(peripheral).await? {
+                    adapter.stop_scan().await;
                     return Ok(Some(peripheral));
                 }
             }
@@ -158,7 +160,7 @@ impl EcamPeripheral {
                 .write(
                     &self.characteristic,
                     &data,
-                    btleplug::api::WriteType::WithoutResponse,
+                    btleplug::api::WriteType::WithResponse,
                 )
                 .await?,
         )
@@ -187,6 +189,7 @@ impl EcamPeripheral {
             .await
             .expect("Could not subscribe to characteristic");
         trace_packet!("SUBSCRIBED");
+        trace_packet!("Is connected ? {:?}", self.peripheral.is_connected().await);
         let peripheral = self.peripheral.clone();
         let (trigger, tripwire) = Tripwire::new();
         tokio::spawn(async move {
@@ -199,7 +202,7 @@ impl EcamPeripheral {
 
         // Raw stream of bytes from device
         let notifications = self.peripheral.notifications().await?.map(|m| m.value);
-        trace_packet!("GOT NOTIFICATIONS");
+        trace_packet!("GOT NOTIFICATIONS stream setup");
         // Parse into packets and stop when device disconnected
         let n = packet_stream(notifications)
             .map(|v| EcamDriverOutput::Packet(EcamDriverPacket::from_slice(unwrap_packet(&v))))
