@@ -1,79 +1,22 @@
 #![warn(clippy::all)]
-use rumqttc::{AsyncClient, Event, Key, MqttOptions, TlsConfiguration, Transport};
-use serde::Serialize;
-use serde_json::json;
-use tokio::task::JoinHandle;
-use tokio_stream::StreamExt;
+use longshot::device_common::DeviceCommon;
+use longshot::mqtt::{AwsConfig, MqttServer};
+use std::fs::{self, File};
+use std::io::Read;
+use std::str;
 
 use std::sync::Arc;
 
 use clap::builder::{PossibleValue, PossibleValuesParser};
-use clap::{arg, command, Arg, ArgMatches};
+use clap::{arg, command};
 
 mod app;
 
-use longshot::ecam::{
-    ecam_lookup, ecam_scan, get_ecam_simulator, pipe_stdin, Ecam, EcamBT, EcamError, EcamOutput,
-    EcamStatus,
-};
+use longshot::ecam::{ecam, ecam_scan, get_ecam_simulator, pipe_stdin, EcamBT};
 use longshot::{operations::*, protocol::*};
 
 fn enum_value_parser<T: MachineEnumerable<T> + 'static>() -> PossibleValuesParser {
     PossibleValuesParser::new(T::all().map(|x| PossibleValue::new(x.to_arg_string())))
-}
-
-#[derive(Clone)]
-struct DeviceCommon {
-    device_name: String,
-    dump_packets: bool,
-    turn_on: bool,
-    allow_off: bool,
-}
-
-impl DeviceCommon {
-    fn args() -> [Arg; 4] {
-        [
-            arg!(--"device-name" <name>)
-                .help("Provides the name of the device")
-                .required(true),
-            arg!(--"dump-packets").help("Dumps decoded packets to the terminal for debugging"),
-            arg!(--"turn-on")
-                .help("Turn on the machine before running this operation")
-                .conflicts_with("allow-off"),
-            arg!(--"allow-off")
-                .hide(true)
-                .help("Allow brewing while machine is off")
-                .conflicts_with("turn-on"),
-        ]
-    }
-
-    fn parse(cmd: &ArgMatches) -> Self {
-        Self {
-            device_name: cmd
-                .get_one::<String>("device-name")
-                .expect("Device name required")
-                .clone(),
-            dump_packets: cmd.get_flag("dump-packets"),
-            turn_on: cmd.get_flag("turn-on"),
-            allow_off: cmd.get_flag("allow-off"),
-        }
-    }
-}
-
-async fn ecam(device_common: &DeviceCommon, allow_off_and_alarms: bool) -> Result<Ecam, EcamError> {
-    let ecam = ecam_lookup(&device_common.device_name, device_common.dump_packets).await?;
-    if !power_on(
-        ecam.clone(),
-        device_common.allow_off | allow_off_and_alarms,
-        allow_off_and_alarms,
-        device_common.turn_on,
-    )
-    .await?
-    {
-        longshot::display::shutdown();
-        std::process::exit(1);
-    }
-    Ok(ecam)
 }
 
 #[tokio::main]
@@ -151,7 +94,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subcommand(
             command!("server")
                 .about("Launch an MQTT listener to brew coffee")
-                .args(&DeviceCommon::args()),
+                .args(&DeviceCommon::args())
+                .arg(arg!(--"ca" <ca>).help("The certificate authority"))
+                .arg(arg!(--"client-cert" <client_cert>).help("The client ceritificate"))
+                .arg(arg!(--"client-key" <client_key>).help("The client private key"))
+                .arg(
+                    arg!(--"client-id" <client_id>)
+                        .help("The client id to use when publishing on MQTT"),
+                )
+                .arg(arg!(--"endpoint" <endpoint>).help("The MQTT endpoint"))
+                .arg(
+                    arg!(--"listen-topic" <listen_topic>)
+                        .help("The topic on which the MQTT client listens for requests"),
+                ),
         )
         .subcommand(command!("list").about("List all supported devices"))
         .subcommand(
@@ -248,7 +203,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Some(("server", cmd)) => {
-            launch_server(DeviceCommon::parse(cmd)).await?;
+            let ca = cmd
+                .get_one::<String>("ca")
+                .expect("The argument ca must be specified")
+                .clone();
+            let client_cert = cmd
+                .get_one::<String>("client-cert")
+                .expect("The argument client-cert must be specified")
+                .clone();
+            let client_key = cmd
+                .get_one::<String>("client-key")
+                .expect("The argument client-key must be specified")
+                .clone();
+            let endpoint = cmd
+                .get_one::<String>("endpoint")
+                .expect("The argument endpoint must be specified")
+                .clone();
+            let listen_topic = cmd
+                .get_one::<String>("listen-topic")
+                .expect("The argument listen-topic must be specified")
+                .clone();
+            let client_id = cmd
+                .get_one::<String>("client-id")
+                .expect("The argument client-id must be specified")
+                .clone();
+            let mqtt_server = MqttServer {
+                aws_config: AwsConfig {
+                    ca: get_file_as_byte_vec(&ca),
+                    client_cert: get_file_as_byte_vec(&client_cert),
+                    client_key: get_file_as_byte_vec(&client_key),
+                },
+                client_id,
+                listen_topic,
+                endpoint,
+            };
+            let device_common = DeviceCommon::parse(cmd);
+            mqtt_server.launch_server(device_common).await?;
         }
         _ => {}
     }
@@ -257,114 +247,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn launch_server(device_common: DeviceCommon) -> Result<(), Box<dyn std::error::Error>> {
-    // let endpoint = "a2bgpx1ozyhrxg-ats.iot.eu-west-1.amazonaws.com"; // Florent Account
-    let endpoint = "a2h2atwks6nyky-ats.iot.eu-west-1.amazonaws.com"; // Serverlesspresso
-    let mut mqttoptions = MqttOptions::new("macbook-test", endpoint, 8883);
-    mqttoptions.set_keep_alive(std::time::Duration::from_secs(10));
+fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
+    let mut f = File::open(&filename).expect("no file found");
+    let metadata = fs::metadata(&filename).expect("unable to read metadata");
+    let mut buffer = vec![0; metadata.len() as usize];
+    f.read(&mut buffer).expect("buffer overflow");
 
-    let ca = include_bytes!("/Users/florentcollin/Downloads/iot-core/root-CA.crt").to_vec();
-    let client_cert =
-        include_bytes!("/Users/florentcollin/Downloads/267100145c950b6601c962a5e8be7459f53fe4c3cba8eef75012f887568e98b9-certificate.pem.crt").to_vec();
-    let client_key =
-        include_bytes!("/Users/florentcollin/Downloads/267100145c950b6601c962a5e8be7459f53fe4c3cba8eef75012f887568e98b9-private.pem.key").to_vec();
-
-    let transport = Transport::Tls(TlsConfiguration::Simple {
-        ca,
-        alpn: None,
-        client_auth: Some((client_cert, Key::RSA(client_key))),
-    });
-
-    mqttoptions.set_transport(transport);
-
-    let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
-    let topic = "brew/in/+";
-    client
-        .subscribe(topic, rumqttc::QoS::AtMostOnce)
-        .await
-        .expect("Could not subscribe to topic");
-
-    let eventloop_task = tokio::task::spawn(async move {
-        loop {
-            match eventloop.poll().await {
-                Ok(event) => match event {
-                    Event::Incoming(packet) => {
-                        println!("Received Published event: {:?}", packet);
-                        if let rumqttc::Packet::Publish(packet) = packet {
-                            if packet.dup {
-                                println!("This event is a duplicated skipping it...");
-                                continue;
-                            }
-
-                            if packet.topic.starts_with("brew/in/") {
-                                let id = packet.topic.split('/').next_back().unwrap();
-                                println!("CALLING THE BREW_MQTT 🎉");
-                                let _ = brew_mqtt(&client, String::from(id), device_common.clone());
-                            }
-                        }
-                    }
-                    _ => {
-                        println!("Event: {:?}", event);
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Error = {:?}", e);
-                    break;
-                }
-            }
-        }
-    });
-    let _ = tokio::join!(eventloop_task);
-
-    Ok(())
-}
-
-fn brew_mqtt(client: &AsyncClient, brew_id: String, device_common: DeviceCommon) -> JoinHandle<()> {
-    let client = client.clone();
-
-    println!("SPAWNING THE BREW_MQTT 🎉");
-    tokio::task::spawn(async move {
-        println!("RUNNIGN THE BREW_MQTT 🎉");
-        let device_common = device_common.clone();
-        let ecam_machine = ecam(&device_common, false).await.expect("TODO");
-
-        let mut tap = ecam_machine.packet_tap().await.expect("TODO");
-        let mut last_status = None;
-        while let Some(packet) = tap.next().await {
-            match packet {
-                EcamOutput::Ready | EcamOutput::Packet(_) => {
-                    let status = ecam_machine.current_state().await.expect("TODO");
-                    if let Some(last_status) = last_status {
-                        if last_status == status {
-                            continue;
-                        }
-                    }
-                    last_status = Some(status);
-                    let payload = json!(DdbEntry {
-                        id: brew_id.clone(),
-                        status: status,
-                    })
-                    .to_string();
-                    println!("Got ok status: {payload}");
-                    let topic = format!("brew/out/{brew_id}");
-                    let res = client
-                        .publish(topic, rumqttc::QoS::AtMostOnce, false, payload)
-                        .await;
-                    if res.is_err() {
-                        eprintln!("Error while publishing to MQTT: {:?}", res.unwrap_err());
-                    }
-                }
-                EcamOutput::Done => {
-                    break;
-                }
-            }
-        }
-    })
-}
-
-#[derive(Serialize)]
-struct DdbEntry {
-    id: String,
-    #[serde(flatten)]
-    status: EcamStatus,
+    buffer
 }

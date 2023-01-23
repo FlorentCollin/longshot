@@ -1,6 +1,6 @@
 //! Low-level communication with ECAM-based devices.
 
-use crate::prelude::*;
+use crate::{device_common::DeviceCommon, display, operations::power_on, prelude::*};
 
 use thiserror::Error;
 
@@ -28,6 +28,25 @@ pub async fn ecam_scan() -> Result<(String, String), EcamError> {
 pub async fn ecam_lookup(device_name: &str, dump_packets: bool) -> Result<Ecam, EcamError> {
     let driver = Box::new(get_ecam_subprocess(device_name).await?);
     Ok(Ecam::new(driver, dump_packets).await)
+}
+
+pub async fn ecam(
+    device_common: &DeviceCommon,
+    allow_off_and_alarms: bool,
+) -> Result<Ecam, EcamError> {
+    let ecam = ecam_lookup(&device_common.device_name, device_common.dump_packets).await?;
+    if !power_on(
+        ecam.clone(),
+        device_common.allow_off | allow_off_and_alarms,
+        allow_off_and_alarms,
+        device_common.turn_on,
+    )
+    .await?
+    {
+        display::shutdown();
+        std::process::exit(1);
+    }
+    Ok(ecam)
 }
 
 #[derive(Error, Debug)]
