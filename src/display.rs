@@ -219,17 +219,23 @@ impl StatusDisplay for ColouredStatusDisplay {
         let (percent, emoji, status_text) = match state {
             EcamStatus::Ready => (0, "✅", "Ready".to_string()),
             EcamStatus::StandBy => (0, "💤", "Standby".to_string()),
-            EcamStatus::Busy(percent) => (percent, "☕", format!("Dispensing... ({}%)", percent)),
-            EcamStatus::Cleaning(percent) => (percent, "💧", format!("Cleaning... ({}%)", percent)),
+            EcamStatus::Busy {
+                percentage: percent,
+            } => (percent, "☕", format!("Dispensing... ({}%)", percent)),
+            EcamStatus::Cleaning {
+                percentage: percent,
+            } => (percent, "💧", format!("Cleaning... ({}%)", percent)),
             EcamStatus::Descaling => (0, "💧", "Descaling".to_string()),
-            EcamStatus::TurningOn(percent) => {
-                (percent, "💡", format!("Turning on... ({}%)", percent))
-            }
-            EcamStatus::ShuttingDown(percent) => {
-                (percent, "🛏", format!("Shutting down... ({}%)", percent))
-            }
+            EcamStatus::TurningOn {
+                percentage: percent,
+            } => (percent, "💡", format!("Turning on... ({}%)", percent)),
+            EcamStatus::ShuttingDown {
+                percentage: percent,
+            } => (percent, "🛏", format!("Shutting down... ({}%)", percent)),
             EcamStatus::Alarm(alarm) => (0, "🔔", format!("Alarm ({:?})", alarm)),
-            EcamStatus::Fetching(percent) => (percent, "👓", format!("Fetching... ({}%)", percent)),
+            EcamStatus::Fetching {
+                percentage: percent,
+            } => (percent, "👓", format!("Fetching... ({}%)", percent)),
         };
 
         let mut status = " ".to_owned() + &status_text;
@@ -327,13 +333,23 @@ impl StatusDisplay for BasicStatusDisplay {
         let (bar, percent) = match state {
             EcamStatus::Ready => ("Ready".to_owned(), None),
             EcamStatus::StandBy => ("Standby".to_owned(), None),
-            EcamStatus::TurningOn(percent) => ("Turning on...".to_owned(), Some(percent)),
-            EcamStatus::ShuttingDown(percent) => ("Shutting down...".to_owned(), Some(percent)),
-            EcamStatus::Busy(percent) => ("Dispensing...".to_owned(), Some(percent)),
-            EcamStatus::Cleaning(percent) => ("Cleaning...".to_owned(), Some(percent)),
+            EcamStatus::TurningOn {
+                percentage: percent,
+            } => ("Turning on...".to_owned(), Some(percent)),
+            EcamStatus::ShuttingDown {
+                percentage: percent,
+            } => ("Shutting down...".to_owned(), Some(percent)),
+            EcamStatus::Busy {
+                percentage: percent,
+            } => ("Dispensing...".to_owned(), Some(percent)),
+            EcamStatus::Cleaning {
+                percentage: percent,
+            } => ("Cleaning...".to_owned(), Some(percent)),
             EcamStatus::Descaling => ("Descaling...".to_owned(), None),
             EcamStatus::Alarm(alarm) => (format!("Alarm: {:?}", alarm), None),
-            EcamStatus::Fetching(percent) => ("Fetching...".to_owned(), Some(percent)),
+            EcamStatus::Fetching {
+                percentage: percent,
+            } => ("Fetching...".to_owned(), Some(percent)),
         };
 
         self.tty.status(&format!(
@@ -384,7 +400,7 @@ mod test {
     fn format_rich() {
         let mut display = ColouredStatusDisplay::new(60);
         for i in 0..=100 {
-            display.display(crate::ecam::EcamStatus::Busy(i));
+            display.display(crate::ecam::EcamStatus::Busy { percentage: i });
         }
     }
 }

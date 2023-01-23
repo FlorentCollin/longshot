@@ -9,6 +9,8 @@ pub use monitor::*;
 pub use profile::*;
 pub use recipe::*;
 
+use serde::Serialize;
+
 /// Implements the encode part of an encode/decode pair for a request or response.
 pub trait PartialEncode {
     fn partial_encode(&self, out: &mut Vec<u8>);
@@ -104,7 +106,7 @@ macro_rules! packet_definition {
 
         /// A request sent from the host to device.
         #[allow(dead_code)]
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
         pub enum Request {
             $(
                 $name( $($req_type),* ),
@@ -143,7 +145,7 @@ macro_rules! packet_definition {
 
         /// A response sent from the device to the host.
         #[allow(dead_code)]
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
         pub enum Response {
             $(
                 $name ( $($resp_type),* ),

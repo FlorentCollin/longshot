@@ -198,7 +198,7 @@ async fn send(
 
 pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, EcamError> {
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    const DELAY: Duration = Duration::from_millis(250);
+    const DELAY: Duration = Duration::from_millis(125);
     send_output(&tx, EcamDriverOutput::Ready).await?;
     let tx_out = tx.clone();
     let on = simulator.ends_with("[on]");

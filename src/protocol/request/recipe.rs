@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 use crate::protocol::*;
 
 /// Recipe information returned from [`Request::RecipeQuantityRead`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct RecipeInfo<T> {
     pub ingredient: MachineEnum<EcamIngredients>,
     pub value: T,
@@ -51,7 +53,7 @@ impl PartialEncode for RecipeInfo<u16> {
 }
 
 /// Recipe information returned from [`Request::RecipeQuantityRead`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct RecipeMinMaxInfo {
     pub ingredient: MachineEnum<EcamIngredients>,
     pub min: u16,

@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 use super::PartialDecode;
 
 /// Represents a recipe or profile name with an associate icon tucked into the last byte.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct WideStringWithIcon {
     name: String,
     icon: u8,

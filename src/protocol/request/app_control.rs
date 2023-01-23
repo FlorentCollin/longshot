@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
+use serde::Serialize;
+
 use super::PartialEncode;
 
 /// Operations used by the application for various purposes.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum AppControl {
     /// Turns the machine on.
     TurnOn,

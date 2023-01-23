@@ -1,8 +1,10 @@
 use std::{fmt::Debug, hash::Hash, marker::PhantomData};
 
+use serde::{Deserialize, Serialize};
+
 /// Helper trait that collects the requirements for a MachineEnum.
 pub trait MachineEnumerable<T>:
-    TryFrom<u8> + Into<u8> + Copy + Debug + Eq + PartialEq + Ord + PartialOrd + Hash + Sized
+    TryFrom<u8> + Into<u8> + Copy + Debug + Eq + PartialEq + Ord + PartialOrd + Hash + Sized + Serialize
 where
     T: MachineEnumerable<T>,
 {
@@ -18,7 +20,7 @@ where
 }
 
 /// Wraps a machine enumeration that may have unknown values.
-#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Hash, Deserialize, Serialize)]
 pub enum MachineEnum<T: MachineEnumerable<T>> {
     Value(T),
     Unknown(u8),
@@ -92,7 +94,7 @@ impl<T: MachineEnumerable<T>> PartialEq<T> for MachineEnum<T> {
 }
 
 /// Represents a set of enum values, some potentially unknown.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 pub struct SwitchSet<T: MachineEnumerable<T>> {
     pub value: u16,
     phantom: PhantomData<T>,

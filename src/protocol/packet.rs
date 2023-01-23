@@ -1,8 +1,9 @@
 use crate::protocol::request::{PartialDecode, PartialEncode};
 use crc::Crc;
+use serde::Serialize;
 use std::fmt::Debug;
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Serialize)]
 /// A simple byte-based driver packet, with header, length and checksum.
 pub struct EcamDriverPacket {
     pub(crate) bytes: Vec<u8>,
@@ -35,7 +36,7 @@ impl EcamDriverPacket {
 }
 
 /// A packet that may have a representation attached, allowing us to parse a packet once and only once.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct EcamPacket<T> {
     pub representation: Option<T>,
     pub bytes: EcamDriverPacket,

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use super::MachineEnumerable;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use serde::Serialize;
 
 ///! This file contains validated hardware enumerations and associated values.
 
@@ -19,6 +20,7 @@ macro_rules! hardware_enum {
             TryFromPrimitive,
             Eq,
             Hash,
+            Serialize,
         )]
         pub enum $name { $($(#[doc=$item_comment])? $x = $v),* }
 

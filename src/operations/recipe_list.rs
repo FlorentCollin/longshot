@@ -246,9 +246,9 @@ pub async fn accumulate_recipies_for(
         }
         'outer: for beverage in recipes.get_remaining_beverages() {
             'inner: for packet in recipes.get_request_packets(beverage) {
-                crate::display::display_status(crate::ecam::EcamStatus::Fetching(
-                    (total - recipes.get_remaining_beverages().len()) * 100 / total,
-                ));
+                crate::display::display_status(crate::ecam::EcamStatus::Fetching {
+                    percentage: (total - recipes.get_remaining_beverages().len()) * 100 / total,
+                });
                 let request_id = packet.ecam_request_id();
                 ecam.write_request(packet).await?;
                 let now = std::time::Instant::now();
@@ -274,7 +274,7 @@ pub async fn accumulate_recipies_for(
                 }
             }
         }
-        display::display_status(crate::ecam::EcamStatus::Fetching(100));
+        display::display_status(crate::ecam::EcamStatus::Fetching { percentage: 100 });
         display::clear_status();
     }
     Ok(recipes)

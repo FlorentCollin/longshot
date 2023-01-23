@@ -13,6 +13,7 @@ pub async fn read_parameter(ecam: Ecam, param: u16, len: u8) -> Result<(), EcamE
             trace_packet!("{:?}", packet);
             // }
             if packet == EcamOutput::Done {
+                println!("FINISHED YEAH");
                 break;
             }
         }

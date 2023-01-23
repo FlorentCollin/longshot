@@ -1,10 +1,12 @@
+use serde::Serialize;
+
 use super::PartialDecode;
 use crate::protocol::*;
 
 /// The response to a monitor inquiry sent by [`Request::MonitorV2`].
 ///
 /// Some fields appear not to be used and always appear to be zero.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct MonitorV2Response {
     pub state: MachineEnum<EcamMachineState>,
     pub accessory: MachineEnum<EcamAccessory>,
@@ -12,10 +14,15 @@ pub struct MonitorV2Response {
     pub alarms: SwitchSet<EcamMachineAlarm>,
     pub progress: u8,
     pub percentage: u8,
+    #[serde(skip_serializing)]
     pub unknown0: u8,
+    #[serde(skip_serializing)]
     pub unknown1: u8,
+    #[serde(skip_serializing)]
     pub unknown2: u8,
+    #[serde(skip_serializing)]
     pub unknown3: u8,
+    #[serde(skip_serializing)]
     pub unknown4: u8,
 }
 

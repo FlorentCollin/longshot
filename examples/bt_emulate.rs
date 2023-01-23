@@ -75,3 +75,7 @@
 //     while peripheral.is_advertising().await.unwrap() {}
 //     Ok(())
 // }
+
+fn main() {
+    println!("Hello, BT Emulate");
+}

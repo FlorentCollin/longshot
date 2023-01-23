@@ -82,10 +82,9 @@ macro_rules! spawn_loop {
 
 /// Pipes an EcamDriver to/from stdio.
 pub async fn pipe_stdin<T: EcamDriver + 'static>(
-    ecam: T,
+    ecam: &Arc<Box<T>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut bt_out = Box::pin(packet_stdio_stream());
-    let ecam = Arc::new(Box::new(ecam));
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
 
     // Watchdog timer: if we don't get _some_ event within the timeout, we assume that things havegone sideways

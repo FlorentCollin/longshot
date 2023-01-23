@@ -1,25 +1,27 @@
 use crate::prelude::*;
 
+use serde::Serialize;
 use tokio::sync::{Mutex, OwnedSemaphorePermit};
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::ecam::{EcamDriver, EcamDriverOutput, EcamError};
 use crate::protocol::*;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "content")]
 pub enum EcamStatus {
     StandBy,
-    TurningOn(usize),
-    ShuttingDown(usize),
+    TurningOn { percentage: usize },
+    ShuttingDown { percentage: usize },
     Ready,
-    Busy(usize),
-    Cleaning(usize),
+    Busy { percentage: usize },
+    Cleaning { percentage: usize },
     Descaling,
     Alarm(MachineEnum<EcamMachineAlarm>),
-    Fetching(usize),
+    Fetching { percentage: usize },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum EcamOutput {
     Ready,
     Packet(EcamPacket<Response>),
@@ -63,24 +65,34 @@ impl From<EcamOutput> for EcamDriverOutput {
 impl EcamStatus {
     pub fn extract(state: &MonitorV2Response) -> EcamStatus {
         if state.state == EcamMachineState::TurningOn {
-            return EcamStatus::TurningOn(state.percentage as usize);
+            return EcamStatus::TurningOn {
+                percentage: state.percentage as usize,
+            };
         }
         if state.state == EcamMachineState::ShuttingDown {
             if state.percentage < 100 {
-                return EcamStatus::ShuttingDown(state.percentage as usize);
+                return EcamStatus::ShuttingDown {
+                    percentage: state.percentage as usize,
+                };
             }
             // Emulate status % using progress
-            return EcamStatus::ShuttingDown((state.progress as usize * 10).clamp(0, 100));
+            return EcamStatus::ShuttingDown {
+                percentage: state.progress as usize * 10.clamp(0, 100),
+            };
         }
         if state.state == EcamMachineState::MilkCleaning || state.state == EcamMachineState::Rinsing
         {
-            return EcamStatus::Cleaning(state.percentage as usize);
+            return EcamStatus::Cleaning {
+                percentage: state.percentage as usize,
+            };
         }
         if state.state == EcamMachineState::MilkPreparation
             || state.state == EcamMachineState::HotWaterDelivery
             || (state.state == EcamMachineState::ReadyOrDispensing && state.progress != 0)
         {
-            return EcamStatus::Busy(state.percentage as usize);
+            return EcamStatus::Busy {
+                percentage: state.percentage as usize,
+            };
         }
         if state.state == EcamMachineState::Descaling {
             return EcamStatus::Descaling;
@@ -440,6 +452,11 @@ impl Ecam {
         alive.deaden();
         Ok(())
     }
+
+    pub async fn send_done(self) {
+        let internals = self.internals.lock().await;
+        let _ = internals.packet_tap.send(EcamOutput::Done);
+    }
 }
 
 #[cfg(test)]
@@ -448,17 +465,17 @@ mod test {
     use rstest::*;
 
     #[rstest]
-    #[case(EcamStatus::Busy(0), &crate::protocol::test::RESPONSE_STATUS_CAPPUCCINO_MILK)]
-    #[case(EcamStatus::Cleaning(9), &crate::protocol::test::RESPONSE_STATUS_CLEANING_AFTER_CAPPUCCINO)]
+    #[case(EcamStatus::Busy{ percentage: 0}, &crate::protocol::test::RESPONSE_STATUS_CAPPUCCINO_MILK)]
+    #[case(EcamStatus::Cleaning{ percentage: 9}, &crate::protocol::test::RESPONSE_STATUS_CLEANING_AFTER_CAPPUCCINO)]
     // We removed the need to test the CleanKnob alarm since it's technically a warning - should handle this better
     // #[case(EcamStatus::Alarm(EcamMachineAlarm::CleanKnob.into()), &crate::protocol::test::RESPONSE_STATUS_READY_AFTER_CAPPUCCINO)]
     #[case(EcamStatus::StandBy, &crate::protocol::test::RESPONSE_STATUS_STANDBY_NO_ALARMS)]
     #[case(EcamStatus::StandBy, &crate::protocol::test::RESPONSE_STATUS_STANDBY_NO_WATER_TANK)]
     #[case(EcamStatus::StandBy, &crate::protocol::test::RESPONSE_STATUS_STANDBY_WATER_SPOUT)]
     #[case(EcamStatus::StandBy, &crate::protocol::test::RESPONSE_STATUS_STANDBY_NO_COFFEE_CONTAINER)]
-    #[case(EcamStatus::ShuttingDown(10), &crate::protocol::test::RESPONSE_STATUS_SHUTTING_DOWN_1)]
-    #[case(EcamStatus::ShuttingDown(30), &crate::protocol::test::RESPONSE_STATUS_SHUTTING_DOWN_2)]
-    #[case(EcamStatus::ShuttingDown(60), &crate::protocol::test::RESPONSE_STATUS_SHUTTING_DOWN_3)]
+    #[case(EcamStatus::ShuttingDown{percentage: 10}, &crate::protocol::test::RESPONSE_STATUS_SHUTTING_DOWN_1)]
+    #[case(EcamStatus::ShuttingDown{percentage: 30}, &crate::protocol::test::RESPONSE_STATUS_SHUTTING_DOWN_2)]
+    #[case(EcamStatus::ShuttingDown{percentage: 60}, &crate::protocol::test::RESPONSE_STATUS_SHUTTING_DOWN_3)]
     fn decode_ecam_status(#[case] expected_status: EcamStatus, #[case] bytes: &[u8]) {
         let response = Response::decode(unwrap_packet(bytes))
             .0
