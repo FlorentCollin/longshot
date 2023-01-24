@@ -1,10 +1,10 @@
-use crate::ecam::{ecam, EcamStatus};
+use crate::ecam::{ecam, get_ecam_simulator, Ecam, EcamBT, EcamStatus};
 use crate::operations::{brew, validate_brew, BrewIngredientInfo, IngredientCheckMode};
 use crate::protocol::machine_enum::MachineEnumerable;
 use crate::protocol::{EcamBeverageId, EcamBeverageTaste};
 use crate::{device_common::DeviceCommon, ecam::EcamOutput};
-use std::error::Error;
 use std::str;
+use std::sync::Arc;
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, Key, MqttOptions, TlsConfiguration, Transport};
@@ -21,7 +21,8 @@ pub struct AwsConfig {
 pub struct MqttServer {
     pub aws_config: AwsConfig,
     pub client_id: String,
-    pub listen_topic: String,
+    pub topic_in: String,
+    pub topic_out: String,
     pub endpoint: String,
 }
 
@@ -42,13 +43,13 @@ impl MqttServer {
             )),
         });
         mqttoptions.set_transport(transport);
-        let topic_prefix = String::from(&self.listen_topic[..self.listen_topic.len() - 1]);
+        // Remove the `+` from the listen_topic
+        let topic_prefix = String::from(&self.topic_in[..self.topic_in.len() - 1]);
         let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
         client
-            .subscribe(self.listen_topic, rumqttc::QoS::AtLeastOnce)
+            .subscribe(self.topic_in, rumqttc::QoS::AtLeastOnce)
             .await?;
 
-        // Remove the `+` from the listen_topic
         let _eventloop_task = tokio::task::spawn(async move {
             loop {
                 match eventloop.poll().await {
@@ -67,7 +68,12 @@ impl MqttServer {
                                         Ok(brew_in) => {
                                             println!("{:?}", brew_in);
                                             println!("CALLING THE BREW_MQTT 🎉");
-                                            brew_mqtt(&client, brew_in, device_common.clone());
+                                            brew_mqtt(
+                                                &client,
+                                                brew_in,
+                                                self.topic_out.clone(),
+                                                device_common.clone(),
+                                            );
                                         }
                                     }
                                 }
@@ -90,16 +96,36 @@ impl MqttServer {
     }
 }
 
-fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, device_common: DeviceCommon) {
+fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common: DeviceCommon) {
     let client = client.clone();
 
     println!("SPAWNING THE BREW_MQTT 🎉");
     tokio::task::spawn(async move {
         println!("RUNNING THE BREW_MQTT 🎉");
         let device_common = device_common.clone();
-        let ecam_machine = ecam(&device_common, false)
+        let device_name = device_common.device_name;
+        let ecam_machine = if device_name.starts_with("sim") {
+            Ecam::new(
+                Box::new(
+                    get_ecam_simulator(&device_name)
+                        .await
+                        .expect("Could not get simulator"),
+                ),
+                false,
+            )
             .await
-            .expect("Could not find the ecam machine");
+        } else {
+            Ecam::new(
+                Box::new(
+                    EcamBT::get(device_name)
+                        .await
+                        .expect("Could not get bluetooth simulator"),
+                ),
+                false,
+            )
+            .await
+        };
+        // .await.expect("Could not find the ecam machine");
 
         let mut tap = ecam_machine
             .packet_tap()
@@ -121,6 +147,11 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, device_common: DeviceCommon)
             ingredients.push(BrewIngredientInfo::Milk(milk));
         }
 
+        // FIXME: This is a hack to test the machine
+        if beverage == EcamBeverageId::HotWater {
+            ingredients = vec![BrewIngredientInfo::HotWater(20)]
+        }
+
         let recipe = validate_brew(
             ecam_machine.clone(),
             beverage,
@@ -129,9 +160,13 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, device_common: DeviceCommon)
         )
         .await
         .expect("The brew recipe is invalid");
-        // brew(ecam_machine.clone(), false, beverage, recipe)
-        //     .await
-        //     .expect("problem during brewing");
+
+        let ecam_machine_brew = ecam_machine.clone();
+        let brew_task = tokio::task::spawn(async move {
+            brew(ecam_machine_brew, false, beverage, recipe)
+                .await
+                .expect("Error while brewing");
+        });
 
         let mut last_status = None;
         while let Some(packet) = tap.next().await {
@@ -148,12 +183,13 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, device_common: DeviceCommon)
                     }
                     last_status = Some(status);
                     let payload = json!(DdbEntry {
-                        orderId: brew_in.order_id.clone(),
+                        order_id: brew_in.order_id.clone(),
                         status: status,
                     })
                     .to_string();
                     println!("Got ok status: {payload}");
-                    let topic = format!("brew/out/{}", brew_in.order_id);
+
+                    let topic = format!("{}/{}", topic, brew_in.order_id);
                     let res = client
                         .publish(topic, rumqttc::QoS::AtLeastOnce, false, payload)
                         .await;
@@ -163,17 +199,21 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, device_common: DeviceCommon)
                 }
                 EcamOutput::Done => {
                     println!("Done...");
-                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    println!("THIS IS FINISHED... ☕");
+                    let _ = ecam_machine.send_done().await;
                     break;
                 }
             }
         }
+        brew_task.await.expect("Error during the brew task");
     });
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DdbEntry {
-    orderId: String,
+    order_id: String,
     #[serde(flatten)]
     status: EcamStatus,
 }

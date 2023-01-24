@@ -281,6 +281,7 @@ impl Ecam {
                 .await?
                 .unwrap_or(EcamDriverOutput::Done)
                 .into();
+            println!("SENDING PACKET THROUGH THE TAP 🎉");
             let _ = packet_tap_sender.send(packet.clone());
             if dump_packets {
                 trace_packet!("{:?}", packet);
@@ -455,6 +456,7 @@ impl Ecam {
 
     pub async fn send_done(self) {
         let internals = self.internals.lock().await;
+        let _ = self.driver.disconnect().await;
         let _ = internals.packet_tap.send(EcamOutput::Done);
     }
 }

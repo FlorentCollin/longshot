@@ -156,6 +156,10 @@ impl EcamDriver for EcamSimulate {
     {
         unimplemented!()
     }
+
+    fn disconnect(&self) -> AsyncFuture<()> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// Create a Vec<u8> that mocks a machine response.

@@ -3,7 +3,7 @@ use crate::{prelude::*, protocol::*};
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
-use btleplug::platform::{Adapter, Manager};
+use btleplug::platform::{Adapter, Manager, PeripheralId};
 use stream_cancel::{StreamExt as _, Tripwire};
 use tokio::time;
 use uuid::Uuid;
@@ -52,6 +52,7 @@ impl EcamBT {
                     //     println!("Found peripheral with id: {:?}", { periph.id() });
                     //     if periph.id().to_string() == uuid {
                     //         peripheral = Some(periph);
+                    //         break;
                     //     }
                     // }
                     let peripheral = EcamBT::get_ecam_from_adapter(&adapter).await?;
@@ -143,6 +144,13 @@ impl EcamDriver for EcamBT {
     {
         Box::pin(Self::scan())
     }
+
+    fn disconnect(&self) -> AsyncFuture<()> {
+        Box::pin(async move {
+            self.peripheral.peripheral.disconnect().await?;
+            Ok(())
+        })
+    }
 }
 
 /// Holds most of the device BTLE communication functionality.
@@ -197,7 +205,7 @@ impl EcamPeripheral {
             while peripheral.is_connected().await.unwrap_or_default() {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
-            trace_shutdown!("peripheral.is_connected");
+            trace_shutdown!("peripheral.is_disconnected");
             drop(trigger);
         });
 

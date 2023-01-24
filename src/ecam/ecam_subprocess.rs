@@ -57,6 +57,14 @@ impl EcamDriver for EcamSubprocess {
     {
         unimplemented!()
     }
+
+    fn disconnect(&self) -> AsyncFuture<()> {
+        println!("DISCONNECTING FROM SUBPROCESS...");
+        Box::pin(async move {
+            *self.alive.lock().await = false;
+            Ok(())
+        })
+    }
 }
 
 pub async fn stream(

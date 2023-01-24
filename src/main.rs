@@ -12,7 +12,7 @@ use clap::{arg, command};
 
 mod app;
 
-use longshot::ecam::{ecam, ecam_scan, get_ecam_simulator, pipe_stdin, EcamBT};
+use longshot::ecam::{ecam, ecam_scan, get_ecam_simulator, pipe_stdin, EcamBT, EcamDriver};
 use longshot::{operations::*, protocol::*};
 
 fn enum_value_parser<T: MachineEnumerable<T> + 'static>() -> PossibleValuesParser {
@@ -104,9 +104,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .arg(arg!(--"endpoint" <endpoint>).help("The MQTT endpoint"))
                 .arg(
-                    arg!(--"listen-topic" <listen_topic>)
-                        .help("The topic on which the MQTT client listens for requests"),
-                ),
+                    arg!(--"topic-in" <topic_in>)
+                        .help("The topic on which the MQTT client listens for orders"),
+                )
+                .arg(arg!(--"topic-out" <topic_out>).help(
+                    "The topic on which the MQTT client send the status update for an order",
+                )),
         )
         .subcommand(command!("list").about("List all supported devices"))
         .subcommand(
@@ -197,9 +200,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if device_name.starts_with("sim") {
                 let ecam = Arc::new(Box::new(get_ecam_simulator(&device_name).await?));
                 pipe_stdin(&ecam).await?;
+                println!("Disconnecting directly from main.rs");
+                let _ = ecam.disconnect().await;
             } else {
                 let ecam = Arc::new(Box::new(EcamBT::get(device_name).await?));
                 pipe_stdin(&ecam).await?;
+                println!("Disconnecting directly from main.rs");
+                let _ = ecam.disconnect().await;
             }
         }
         Some(("server", cmd)) => {
@@ -219,9 +226,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get_one::<String>("endpoint")
                 .expect("The argument endpoint must be specified")
                 .clone();
-            let listen_topic = cmd
-                .get_one::<String>("listen-topic")
-                .expect("The argument listen-topic must be specified")
+            let topic_in = cmd
+                .get_one::<String>("topic-in")
+                .expect("The argument topic-in must be specified")
+                .clone();
+            let topic_out = cmd
+                .get_one::<String>("topic-out")
+                .expect("The argument topic-out must be specified")
                 .clone();
             let client_id = cmd
                 .get_one::<String>("client-id")
@@ -234,7 +245,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     client_key: get_file_as_byte_vec(&client_key),
                 },
                 client_id,
-                listen_topic,
+                topic_in,
+                topic_out,
                 endpoint,
             };
             let device_common = DeviceCommon::parse(cmd);

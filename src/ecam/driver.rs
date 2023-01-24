@@ -23,6 +23,8 @@ pub trait EcamDriver: Send + Sync {
     fn scan<'a>() -> AsyncFuture<'a, (String, String)>
     where
         Self: Sized;
+
+    fn disconnect(&self) -> AsyncFuture<()>;
 }
 
 #[cfg(test)]
@@ -75,6 +77,10 @@ mod test {
             Self: Sized,
         {
             Box::pin(async { Err(EcamError::NotFound) })
+        }
+
+        fn disconnect(&self) -> AsyncFuture<()> {
+            Box::pin(async move { Ok(()) })
         }
     }
 
