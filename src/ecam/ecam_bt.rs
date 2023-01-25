@@ -43,23 +43,25 @@ impl EcamBT {
             let _ = tokio::spawn(async move {
                 trace_packet!("Looking for peripheral {}", uuid);
                 loop {
-                    // let peripherals = adapter.peripherals().await?;
-                    // let mut peripheral = None;
-                    // if peripherals.is_empty() {
-                    //     println!("There is no peripherals...")
-                    // }
-                    // for periph in peripherals.iter() {
-                    //     println!("Found peripheral with id: {:?}", { periph.id() });
-                    //     if periph.id().to_string() == uuid {
-                    //         peripheral = Some(periph);
-                    //         break;
-                    //     }
-                    // }
-                    let peripheral = EcamBT::get_ecam_from_adapter(&adapter).await?;
+                    let peripherals = adapter.peripherals().await?;
+                    let mut peripheral = None;
+                    if peripherals.is_empty() {
+                        println!("There is no peripherals...")
+                    }
+                    for periph in peripherals.iter() {
+                        println!("Found peripheral with id: {:?}", { periph.id() });
+                        if periph.id().to_string() == uuid {
+                            peripheral = Some(periph);
+                            break;
+                        }
+                    }
+
+                    // let peripheral = EcamBT::get_ecam_from_adapter(&adapter)
+                    // .await?
+                    // .map(|peripheral| peripheral.peripheral);
                     if let Some(peripheral) = peripheral {
                         trace_packet!("Got peripheral");
-                        let peripheral =
-                            EcamPeripheral::connect(peripheral.peripheral.clone()).await?;
+                        let peripheral = EcamPeripheral::connect(peripheral.clone()).await?;
                         trace_packet!("Connected");
                         let notifications = EcamPacketReceiver::from_stream(
                             Box::pin(peripheral.notifications().await?),

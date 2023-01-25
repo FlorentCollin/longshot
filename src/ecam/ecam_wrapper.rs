@@ -14,11 +14,13 @@ pub enum EcamStatus {
     TurningOn { percentage: usize },
     ShuttingDown { percentage: usize },
     Ready,
-    Busy { percentage: usize },
+    Processing { percentage: usize },
     Cleaning { percentage: usize },
     Descaling,
     Alarm(MachineEnum<EcamMachineAlarm>),
     Fetching { percentage: usize },
+    // Only used by the MQTT server to indicate the completion of an order
+    Completed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -90,7 +92,7 @@ impl EcamStatus {
             || state.state == EcamMachineState::HotWaterDelivery
             || (state.state == EcamMachineState::ReadyOrDispensing && state.progress != 0)
         {
-            return EcamStatus::Busy {
+            return EcamStatus::Processing {
                 percentage: state.percentage as usize,
             };
         }
@@ -467,7 +469,7 @@ mod test {
     use rstest::*;
 
     #[rstest]
-    #[case(EcamStatus::Busy{ percentage: 0}, &crate::protocol::test::RESPONSE_STATUS_CAPPUCCINO_MILK)]
+    #[case(EcamStatus::Processing{ percentage: 0}, &crate::protocol::test::RESPONSE_STATUS_CAPPUCCINO_MILK)]
     #[case(EcamStatus::Cleaning{ percentage: 9}, &crate::protocol::test::RESPONSE_STATUS_CLEANING_AFTER_CAPPUCCINO)]
     // We removed the need to test the CleanKnob alarm since it's technically a warning - should handle this better
     // #[case(EcamStatus::Alarm(EcamMachineAlarm::CleanKnob.into()), &crate::protocol::test::RESPONSE_STATUS_READY_AFTER_CAPPUCCINO)]

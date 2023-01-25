@@ -183,6 +183,7 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
                     }
                     last_status = Some(status);
                     let payload = json!(DdbEntry {
+                        user_id: brew_in.user_id.clone(),
                         order_id: brew_in.order_id.clone(),
                         status: status,
                     })
@@ -199,6 +200,17 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
                 }
                 EcamOutput::Done => {
                     println!("Done...");
+                    let payload = json!(DdbEntry {
+                        user_id: brew_in.user_id.clone(),
+                        order_id: brew_in.order_id.clone(),
+                        status: EcamStatus::Completed,
+                    })
+                    .to_string();
+
+                    let topic = format!("{}/{}", topic, brew_in.order_id);
+                    let _ = client
+                        .publish(topic, rumqttc::QoS::AtLeastOnce, false, payload)
+                        .await;
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     println!("THIS IS FINISHED... ☕");
                     let _ = ecam_machine.send_done().await;
@@ -213,6 +225,7 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DdbEntry {
+    user_id: String,
     order_id: String,
     #[serde(flatten)]
     status: EcamStatus,

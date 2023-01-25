@@ -219,7 +219,7 @@ impl StatusDisplay for ColouredStatusDisplay {
         let (percent, emoji, status_text) = match state {
             EcamStatus::Ready => (0, "✅", "Ready".to_string()),
             EcamStatus::StandBy => (0, "💤", "Standby".to_string()),
-            EcamStatus::Busy {
+            EcamStatus::Processing {
                 percentage: percent,
             } => (percent, "☕", format!("Dispensing... ({}%)", percent)),
             EcamStatus::Cleaning {
@@ -236,6 +236,7 @@ impl StatusDisplay for ColouredStatusDisplay {
             EcamStatus::Fetching {
                 percentage: percent,
             } => (percent, "👓", format!("Fetching... ({}%)", percent)),
+            EcamStatus::Completed => (0, "✅", "Done".to_string()),
         };
 
         let mut status = " ".to_owned() + &status_text;
@@ -339,7 +340,7 @@ impl StatusDisplay for BasicStatusDisplay {
             EcamStatus::ShuttingDown {
                 percentage: percent,
             } => ("Shutting down...".to_owned(), Some(percent)),
-            EcamStatus::Busy {
+            EcamStatus::Processing {
                 percentage: percent,
             } => ("Dispensing...".to_owned(), Some(percent)),
             EcamStatus::Cleaning {
@@ -350,6 +351,7 @@ impl StatusDisplay for BasicStatusDisplay {
             EcamStatus::Fetching {
                 percentage: percent,
             } => ("Fetching...".to_owned(), Some(percent)),
+            EcamStatus::Completed => ("Done".to_owned(), None),
         };
 
         self.tty.status(&format!(
@@ -400,7 +402,7 @@ mod test {
     fn format_rich() {
         let mut display = ColouredStatusDisplay::new(60);
         for i in 0..=100 {
-            display.display(crate::ecam::EcamStatus::Busy { percentage: i });
+            display.display(crate::ecam::EcamStatus::Processing { percentage: i });
         }
     }
 }
