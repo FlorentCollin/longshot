@@ -11,26 +11,46 @@ lazy_static! {
     static ref DISPLAY: Mutex<Option<Box<dyn StatusDisplay>>> = Mutex::new(None);
 }
 
+pub enum DisplayMode {
+    Basic,
+    Colored,
+    NoTty,
+}
+
 /// Initializes the global display based on the `TERM` and `COLORTERM` environment variables.
-pub fn initialize_display() {
+pub fn initialize_display(mode: Option<DisplayMode>) {
     let term = std::env::var("TERM").ok();
     let colorterm = std::env::var("COLORTERM").ok();
 
-    if term.is_none() || !atty::is(Stream::Stdout) || !atty::is(Stream::Stderr) {
-        *DISPLAY
-            .lock()
-            .expect("Failed to lock display for initialization") =
-            Some(Box::new(NoTtyStatusDisplay::default()));
+    let display_mode = if mode.is_some() {
+        mode.unwrap()
+    } else if term.is_none() || !atty::is(Stream::Stdout) || !atty::is(Stream::Stderr) {
+        DisplayMode::NoTty
     } else if colorterm.is_some() {
-        *DISPLAY
-            .lock()
-            .expect("Failed to lock display for initialization") =
-            Some(Box::new(ColouredStatusDisplay::new(80)));
+        DisplayMode::Colored
     } else {
-        *DISPLAY
-            .lock()
-            .expect("Failed to lock display for initialization") =
-            Some(Box::new(BasicStatusDisplay::new(80)));
+        DisplayMode::Basic
+    };
+
+    match display_mode {
+        DisplayMode::Basic => {
+            *DISPLAY
+                .lock()
+                .expect("Failed to lock display for initialization") =
+                Some(Box::new(BasicStatusDisplay::new(80)));
+        }
+        DisplayMode::Colored => {
+            *DISPLAY
+                .lock()
+                .expect("Failed to lock display for initialization") =
+                Some(Box::new(ColouredStatusDisplay::new(80)));
+        }
+        DisplayMode::NoTty => {
+            *DISPLAY
+                .lock()
+                .expect("Failed to lock display for initialization") =
+                Some(Box::new(NoTtyStatusDisplay::default()));
+        }
     }
 }
 

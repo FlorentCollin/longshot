@@ -1,5 +1,6 @@
 #![warn(clippy::all)]
 use longshot::device_common::DeviceCommon;
+use longshot::display::DisplayMode;
 use longshot::mqtt::{AwsConfig, MqttServer};
 use std::fs::{self, File};
 use std::io::Read;
@@ -22,7 +23,7 @@ fn enum_value_parser<T: MachineEnumerable<T> + 'static>() -> PossibleValuesParse
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::init();
-    longshot::display::initialize_display();
+    longshot::display::initialize_display(None);
 
     let matches = command!()
         .arg(arg!(--"trace").help("Trace packets to/from device"))
@@ -210,6 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Some(("server", cmd)) => {
+        	longshot::display::initialize_display(Some(DisplayMode::NoTty));
             let ca = cmd
                 .get_one::<String>("ca")
                 .expect("The argument ca must be specified")

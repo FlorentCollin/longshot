@@ -1,3 +1,4 @@
+use rand::Rng;
 use tokio::sync::Mutex;
 
 use crate::ecam::{EcamDriver, EcamDriverOutput, EcamError};
@@ -202,12 +203,16 @@ async fn send(
 
 pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, EcamError> {
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    const DELAY: Duration = Duration::from_millis(125);
+    const DELAY: Duration = Duration::from_millis(500);
     send_output(&tx, EcamDriverOutput::Ready).await?;
     let tx_out = tx.clone();
     let on = simulator.ends_with("[on]");
     trace_packet!("Initializing simulator: {}", simulator);
     tokio::spawn(async move {
+        let next_delay = || {
+            let mut rng = rand::thread_rng();
+            Duration::from_millis(rng.gen_range(250..1000))
+        };
         if !on {
             // Start in standby
             for _ in 0..5 {
@@ -216,7 +221,7 @@ pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, Ecam
                     make_simulated_response(EcamMachineState::StandBy, 0, 0),
                 )
                 .await?;
-                tokio::time::sleep(DELAY).await;
+                tokio::time::sleep(next_delay()).await;
             }
 
             // Turning on
@@ -226,7 +231,7 @@ pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, Ecam
                     make_simulated_response(EcamMachineState::TurningOn, 0, i * 20),
                 )
                 .await?;
-                tokio::time::sleep(DELAY).await;
+                tokio::time::sleep(next_delay()).await;
             }
         }
 
@@ -237,7 +242,7 @@ pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, Ecam
                 make_simulated_response(EcamMachineState::ReadyOrDispensing, 0, 0),
             )
             .await?;
-            tokio::time::sleep(DELAY).await;
+            tokio::time::sleep(next_delay()).await;
         }
 
         // Dispensing
@@ -247,7 +252,7 @@ pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, Ecam
                 make_simulated_response(EcamMachineState::ReadyOrDispensing, i, i * 4),
             )
             .await?;
-            tokio::time::sleep(DELAY).await;
+            tokio::time::sleep(next_delay()).await;
         }
 
         // Ready forever
@@ -257,7 +262,7 @@ pub async fn get_ecam_simulator(simulator: &str) -> Result<impl EcamDriver, Ecam
                 make_simulated_response(EcamMachineState::ReadyOrDispensing, 0, 0),
             )
             .await?;
-            tokio::time::sleep(DELAY).await;
+            tokio::time::sleep(next_delay()).await;
         }
 
         send_output(&tx, EcamDriverOutput::Done).await?;
