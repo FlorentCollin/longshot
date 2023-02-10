@@ -3,7 +3,7 @@ use crate::{prelude::*, protocol::*};
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
-use btleplug::platform::{Adapter, Manager, PeripheralId};
+use btleplug::platform::{Adapter, Manager};
 use stream_cancel::{StreamExt as _, Tripwire};
 use tokio::time;
 use uuid::Uuid;
@@ -43,22 +43,9 @@ impl EcamBT {
             let _ = tokio::spawn(async move {
                 trace_packet!("Looking for peripheral {}", uuid);
                 loop {
-                    let peripherals = adapter.peripherals().await?;
-                    let mut peripheral = None;
-                    if peripherals.is_empty() {
-                        println!("There is no peripherals...")
-                    }
-                    for periph in peripherals.iter() {
-                        println!("Found peripheral with id: {:?}", { periph.id() });
-                        if periph.id().to_string() == uuid {
-                            peripheral = Some(periph);
-                            break;
-                        }
-                    }
-
-                    // let peripheral = EcamBT::get_ecam_from_adapter(&adapter)
-                    // .await?
-                    // .map(|peripheral| peripheral.peripheral);
+                    let peripheral = EcamBT::get_ecam_from_adapter(&adapter)
+                        .await?
+                        .map(|peripheral| peripheral.peripheral);
                     if let Some(peripheral) = peripheral {
                         trace_packet!("Got peripheral");
                         let peripheral = EcamPeripheral::connect(peripheral.clone()).await?;
@@ -105,14 +92,16 @@ impl EcamBT {
 
     /// Searches an adapter for something that meets the definition of [`EcamPeripheral`].
     async fn get_ecam_from_adapter(adapter: &Adapter) -> Result<Option<EcamPeripheral>, EcamError> {
-        trace_packet!("Starting scan on {}...", adapter.adapter_info().await?);
+        let adapter_info = adapter.adapter_info().await?;
+        println!("Starting scan on {}...", adapter_info);
         let filter = ScanFilter {
             services: vec![SERVICE_UUID],
         };
         adapter.start_scan(filter).await?;
 
-        for _ in 0..10 {
-            time::sleep(Duration::from_millis(500)).await;
+        for i in 0..50 {
+            println!("Scanning on {} ({}/50)", adapter_info, i);
+            time::sleep(Duration::from_millis(250)).await;
             let peripherals = adapter.peripherals().await?;
             for peripheral in peripherals.into_iter() {
                 trace_packet!("Found peripheral, address = {:?}", peripheral.address());

@@ -1,15 +1,14 @@
-use crate::ecam::{ecam, get_ecam_simulator, Ecam, EcamBT, EcamStatus};
+use crate::ecam::{get_ecam_simulator, Ecam, EcamBT, EcamStatus};
 use crate::operations::{brew, validate_brew, BrewIngredientInfo, IngredientCheckMode};
 use crate::protocol::machine_enum::MachineEnumerable;
 use crate::protocol::{EcamBeverageId, EcamBeverageTaste};
 use crate::{device_common::DeviceCommon, ecam::EcamOutput};
 use std::str;
-use std::sync::Arc;
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, Key, MqttOptions, TlsConfiguration, Transport};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio_stream::StreamExt;
 
 pub struct AwsConfig {
@@ -63,6 +62,10 @@ impl MqttServer {
                                 }
 
                                 if packet.topic.starts_with(&topic_prefix) {
+                                    println!(
+                                        "{:?}",
+                                        serde_json::from_slice::<Value>(&packet.payload)
+                                    );
                                     match serde_json::from_slice::<BrewIn>(&packet.payload) {
                                         Err(err) => eprintln!("{:?}", err.to_string()),
                                         Ok(brew_in) => {
@@ -136,20 +139,22 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
             EcamBeverageId::lookup_by_name_case_insensitive(&brew_in.drink_order)
                 .expect("Invalid beverage");
 
-        let mut ingredients = vec![
-            BrewIngredientInfo::Coffee(brew_in.drink_details.coffee),
-            BrewIngredientInfo::Taste(
-                EcamBeverageTaste::lookup_by_name_case_insensitive(&brew_in.drink_details.taste)
+        // Setup the ingredients
+        let mut ingredients = vec![];
+        if let Some(coffee) = brew_in.drink_details.coffee {
+            ingredients.push(BrewIngredientInfo::Coffee(coffee));
+        }
+        if let Some(taste) = brew_in.drink_details.taste {
+            ingredients.push(BrewIngredientInfo::Taste(
+                EcamBeverageTaste::lookup_by_name_case_insensitive(&taste)
                     .expect("The taste parameter is not valid"),
-            ),
-        ];
+            ));
+        }
         if let Some(milk) = brew_in.drink_details.milk {
             ingredients.push(BrewIngredientInfo::Milk(milk));
         }
-
-        // FIXME: This is a hack to test the machine
-        if beverage == EcamBeverageId::HotWater {
-            ingredients = vec![BrewIngredientInfo::HotWater(20)]
+        if let Some(hotwater) = brew_in.drink_details.hotwater {
+            ingredients.push(BrewIngredientInfo::HotWater(hotwater));
         }
 
         let recipe = validate_brew(
@@ -169,6 +174,18 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
         });
 
         let mut last_status = None;
+        let topic = format!("{}/{}", topic, brew_in.order_id);
+
+        // Send a first notifcation so the frontend know the order is in processing
+        let payload = json!(DdbEntry {
+            user_id: brew_in.user_id.clone(),
+            order_id: brew_in.order_id.clone(),
+            status: EcamStatus::Ready,
+        })
+        .to_string();
+        let _ = client
+            .publish(&topic, rumqttc::QoS::AtLeastOnce, false, payload)
+            .await;
         while let Some(packet) = tap.next().await {
             match packet {
                 EcamOutput::Ready | EcamOutput::Packet(_) => {
@@ -190,9 +207,8 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
                     .to_string();
                     println!("Got ok status: {payload}");
 
-                    let topic = format!("{}/{}", topic, brew_in.order_id);
                     let res = client
-                        .publish(topic, rumqttc::QoS::AtLeastOnce, false, payload)
+                        .publish(&topic, rumqttc::QoS::AtLeastOnce, false, payload)
                         .await;
                     if res.is_err() {
                         eprintln!("Error while publishing to MQTT: {:?}", res.unwrap_err());
@@ -207,12 +223,11 @@ fn brew_mqtt(client: &AsyncClient, brew_in: BrewIn, topic: String, device_common
                     })
                     .to_string();
 
-                    let topic = format!("{}/{}", topic, brew_in.order_id);
                     let _ = client
-                        .publish(topic, rumqttc::QoS::AtLeastOnce, false, payload)
+                        .publish(&topic, rumqttc::QoS::AtLeastOnce, false, payload)
                         .await;
+                    // Hack
                     tokio::time::sleep(Duration::from_secs(5)).await;
-                    println!("THIS IS FINISHED... ☕");
                     let _ = ecam_machine.send_done().await;
                     break;
                 }
@@ -232,10 +247,12 @@ struct DdbEntry {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct DrinkDetails {
-    coffee: u16,
-    taste: String,
+    coffee: Option<u16>,
+    taste: Option<String>,
     milk: Option<u16>,
+    hotwater: Option<u16>,
 }
 
 #[derive(Deserialize, Debug)]
